@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VIRTUAL OPTICS LAB - SPATIAL VISION</title>
+    <style>
+        :root {
+            --depth-bg: #050508;
+            --glass-surface: rgba(30, 30, 35, 0.6);
+            --glass-border: rgba(255, 255, 255, 0.1);
+            --glass-shine: rgba(255, 255, 255, 0.05);
+            --neon-blue: #007AFF;
+            --neon-cyan: #5AC8FA;
+            --neon-pink: #FF2D55;
+            --neon-green: #34C759;
+            --text-primary: #ffffff;
+            --text-secondary: rgba(235, 235, 245, 0.6);
+            --ease-spatial: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+        }
+
+        body {
+            margin: 0; background-color: var(--depth-bg); color: var(--text-primary);
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif;
+            height: 100vh; overflow: hidden; perspective: 1500px; /* 3D Space */
+            display: flex; justify-content: center; align-items: center;
+        }
+
+        /* --- BACKGROUND PARTICLES --- */
+        #bgCanvas {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            z-index: 0; pointer-events: none;
+            background-image: 
+                radial-gradient(circle at 20% 20%, rgba(40, 40, 60, 0.4) 0%, transparent 50%),
+                radial-gradient(circle at 80% 80%, rgba(0, 50, 80, 0.3) 0%, transparent 50%);
+        }
+
+        /* ================= HOMEPAGE LAYER ================= */
+        #home-layer {
+            position: fixed; inset: 0; z-index: 100;
+            display: flex; justify-content: center; align-items: center;
+            perspective: 1000px;
+            transition: opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1), transform 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        
+        #home-layer.hidden {
+            opacity: 0; pointer-events: none; transform: scale(1.5); filter: blur(20px);
+        }
+
+        .home-card {
+            width: 600px; padding: 60px; text-align: center;
+            background: rgba(20, 20, 25, 0.4); backdrop-filter: blur(30px);
+            border: 1px solid rgba(255,255,255,0.1); border-radius: 40px;
+            box-shadow: 0 50px 100px rgba(0,0,0,0.8), inset 0 0 0 1px rgba(255,255,255,0.05);
+            transform-style: preserve-3d;
+            transition: transform 0.1s ease-out; /* JavaScript drives this */
+        }
+
+        .home-title {
+            font-size: 60px; font-weight: 800; letter-spacing: -2px; margin: 0;
+            background: linear-gradient(180deg, #fff, #888); -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            transform: translateZ(40px);
+        }
+
+        .home-sub {
+            font-size: 14px; text-transform: uppercase; letter-spacing: 4px; color: var(--neon-cyan);
+            margin: 15px 0 40px 0; font-weight: 700; transform: translateZ(20px);
+            text-shadow: 0 0 20px rgba(90, 200, 250, 0.6);
+        }
+
+        .home-btn {
+            padding: 18px 50px; font-size: 16px; font-weight: 700; border-radius: 100px;
+            background: #fff; color: #000; border: none; cursor: pointer;
+            box-shadow: 0 0 40px rgba(255,255,255,0.2); transform: translateZ(60px);
+            transition: all 0.3s ease;
+        }
+        .home-btn:hover { transform: translateZ(70px) scale(1.05); box-shadow: 0 0 60px rgba(255,255,255,0.5); }
+
+
+        /* ================= LAB LAYER (Existing) ================= */
+        /* Hidden initially */
+        #spatial-world {
+            width: 90vw; height: 90vh; max-width: 1400px;
+            transform-style: preserve-3d;
+            transition: opacity 1s ease 0.5s, transform 0.1s var(--ease-spatial); /* Added delay fade in */
+            display: flex; flex-direction: column; gap: 20px;
+            opacity: 0; pointer-events: none; z-index: 10;
+        }
+        
+        #spatial-world.visible {
+            opacity: 1; pointer-events: all;
+        }
+
+        /* --- HEADER (Floating) --- */
+        header {
+            background: rgba(20, 20, 20, 0.5); backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border); border-radius: 100px;
+            padding: 15px 30px; display: flex; justify-content: space-between; align-items: center;
+            transform: translateZ(20px); /* Lifted */
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        }
+        .brand { font-size: 18px; font-weight: 700; letter-spacing: 1px; color: var(--text-primary); }
+        .nav-pills { display: flex; gap: 5px; background: rgba(255,255,255,0.05); padding: 4px; border-radius: 20px; }
+        .pill { 
+            padding: 8px 16px; border-radius: 16px; border: none; background: transparent; 
+            color: var(--text-secondary); font-size: 12px; font-weight: 600; cursor: pointer; transition: 0.3s; 
+        }
+        .pill.active { background: #fff; color: #000; box-shadow: 0 2px 10px rgba(255,255,255,0.2); }
+
+        /* --- MAIN DASHBOARD (Grid) --- */
+        .dashboard-grid {
+            display: grid; grid-template-columns: 2.5fr 1fr; gap: 20px; height: 100%;
+            transform-style: preserve-3d;
+        }
+
+        /* GENERIC GLASS CARD */
+        .spatial-card {
+            background: var(--glass-surface); backdrop-filter: blur(40px);
+            -webkit-backdrop-filter: blur(40px);
+            border: 1px solid var(--glass-border); border-radius: 30px;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.5), inset 0 0 0 1px var(--glass-shine);
+            overflow: hidden; display: flex; flex-direction: column;
+            transform: translateZ(0px); transition: transform 0.3s;
+        }
+        .spatial-card:hover { transform: translateZ(10px); box-shadow: 0 30px 60px rgba(0,0,0,0.6); }
+
+        /* --- LEFT: SIMULATION STAGE --- */
+        .sim-container { position: relative; flex: 2; border-bottom: 1px solid var(--glass-border); background: #000; }
+        canvas#simCanvas { display: block; width: 100%; height: 100%; }
+        
+        .hardware-scope {
+            flex: 1; background: #080808; border-top: 1px solid #333; position: relative;
+            background-image: linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
+            background-size: 20px 20px;
+        }
+        .scope-screen { width: 100%; height: 100%; }
+        .scope-readout {
+            position: absolute; top: 10px; right: 20px; font-family: 'Courier New', monospace;
+            color: var(--neon-cyan); font-size: 12px; text-shadow: 0 0 5px var(--neon-cyan);
+        }
+
+        /* --- RIGHT: CONTROL STACK --- */
+        .controls-stack { display: flex; flex-direction: column; gap: 20px; transform-style: preserve-3d; }
+        
+        /* Control Panel */
+        .control-panel { padding: 25px; gap: 20px; overflow-y: auto; }
+        
+        .ui-group { margin-bottom: 20px; }
+        .ui-label { font-size: 11px; text-transform: uppercase; color: var(--text-secondary); font-weight: 700; margin-bottom: 8px; display: flex; justify-content: space-between; }
+        
+        /* 3D Button */
+        .action-btn {
+            width: 100%; padding: 14px; border-radius: 12px; border: none;
+            background: linear-gradient(135deg, #333, #111); color: #fff;
+            font-weight: 700; cursor: pointer; box-shadow: 0 4px 0 #000;
+            transition: 0.1s; display: flex; align-items: center; justify-content: center; gap: 8px;
+        }
+        .action-btn:active { transform: translateY(4px); box-shadow: 0 0 0 #000; }
+        .action-btn.active { background: linear-gradient(135deg, var(--neon-blue), #0055b3); box-shadow: 0 4px 0 #003366; }
+
+        /* Slider */
+        input[type=range] { width: 100%; -webkit-appearance: none; background: transparent; }
+        input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 6px; background: rgba(255,255,255,0.1); border-radius: 10px; }
+        input[type=range]::-webkit-slider-thumb { 
+            -webkit-appearance: none; height: 18px; width: 18px; border-radius: 50%; 
+            background: #fff; margin-top: -6px; box-shadow: 0 2px 10px rgba(0,0,0,0.5); cursor: pointer; 
+        }
+
+        /* Mode Selector */
+        .mode-toggles { display: flex; background: rgba(0,0,0,0.3); padding: 4px; border-radius: 10px; }
+        .mt-btn { flex: 1; padding: 8px; background: none; border: none; color: #888; font-weight: 600; font-size: 11px; cursor: pointer; border-radius: 8px; transition: 0.3s; }
+        .mt-btn.active { background: rgba(255,255,255,0.15); color: white; }
+
+        /* --- CONTENT VIEWS --- */
+        .content-view { display: none; height: 100%; flex-direction: column; }
+        .content-view.active { display: flex; animation: fadeIn 0.4s ease; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* Data Table */
+        .table-container { 
+            background: rgba(0,0,0,0.2); border-radius: 12px; border: 1px solid rgba(255,255,255,0.05); 
+            height: 200px; overflow-y: auto; margin-top: 10px;
+        }
+        table { width: 100%; border-collapse: collapse; font-size: 12px; }
+        th { text-align: left; padding: 10px; color: var(--neon-cyan); position: sticky; top: 0; background: #1c1c1e; }
+        td { padding: 8px 10px; border-bottom: 1px solid rgba(255,255,255,0.05); color: #ccc; }
+
+        /* Team List */
+        .team-list { display: flex; flex-direction: column; gap: 8px; }
+        .member-card {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 12px; background: rgba(255,255,255,0.03); border-radius: 10px;
+            border: 1px solid transparent; transition: 0.3s;
+        }
+        
+        /* SPECIAL STYLING FOR YOU */
+        .member-card.me {
+            background: rgba(0, 122, 255, 0.1); border-color: rgba(0, 122, 255, 0.3); cursor: pointer;
+        }
+        .member-card.me:hover {
+            background: rgba(0, 122, 255, 0.2); transform: scale(1.02) translateZ(10px);
+            box-shadow: 0 5px 15px rgba(0, 122, 255, 0.2);
+        }
+        .my-name { font-weight: 800; color: white; letter-spacing: 0.5px; } 
+        
+        .member-name { font-weight: 500; color: #ddd; }
+        .member-role { font-size: 10px; font-weight: 700; color: #666; background: #111; padding: 3px 6px; border-radius: 4px; border: 1px solid #333; }
+
+        /* Theory Cards */
+        .theory-scroll { overflow-y: auto; padding-right: 5px; height: 100%; }
+        .concept-card {
+            background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05);
+            border-radius: 12px; padding: 15px; margin-bottom: 10px;
+        }
+        .concept-title { font-weight: 700; color: var(--neon-cyan); margin-bottom: 5px; font-size: 14px; }
+        .concept-body { font-size: 12px; line-height: 1.5; color: #aaa; }
+
+    </style>
+</head>
+<body>
+
+    <canvas id="bgCanvas"></canvas>
+
+    <div id="home-layer">
+        <div class="home-card" id="tiltCard">
+            <h1 class="home-title">SPATIAL<br>OPTICS</h1>
+            <div class="home-sub">ADVANCED SIMULATION LAB</div>
+            <button class="home-btn" onclick="enterLab()">INITIALIZE SYSTEM</button>
+        </div>
+    </div>
+
+    <div id="spatial-world">
+        
+        <header>
+            <div class="brand">SPATIAL OPTICS <span style="font-weight:300; opacity:0.6;">LAB</span></div>
+            <div class="nav-pills">
+                <button class="pill active" onclick="switchView('controls')">CONTROLS</button>
+                <button class="pill" onclick="switchView('data')">DATA LOG</button>
+                <button class="pill" onclick="switchView('theory')">THEORY</button>
+                <button class="pill" onclick="switchView('team')">TEAM</button>
+            </div>
+        </header>
+
+        <div class="dashboard-grid">
+            
+            <div class="spatial-card" style="display:flex; flex-direction:column;">
+                <div class="sim-container">
+                    <canvas id="fiberCanvas"></canvas>
+                    
+                    <div style="position: absolute; top: 20px; left: 20px; pointer-events: none;">
+                        <div style="font-size: 10px; color: #666; font-weight: 700; letter-spacing: 2px;">INPUT SIGNAL</div>
+                        <div style="font-size: 24px; font-weight: 300; color: #fff;"><span id="valIn">-10</span> <span style="font-size: 12px; color: #666;">dBm</span></div>
+                    </div>
+                    <div style="position: absolute; top: 20px; right: 20px; text-align: right; pointer-events: none;">
+                        <div style="font-size: 10px; color: #666; font-weight: 700; letter-spacing: 2px;">OUTPUT SIGNAL</div>
+                        <div style="font-size: 24px; font-weight: 300; color: var(--neon-green);"><span id="valOut">-12.4</span> <span style="font-size: 12px; color: #666;">dBm</span></div>
+                    </div>
+                </div>
+                
+                <div class="hardware-scope">
+                    <div class="scope-readout">OSCILLOSCOPE // RT_GRAPH</div>
+                    <canvas id="scopeCanvas" class="scope-screen"></canvas>
+                </div>
+            </div>
+
+            <div class="spatial-card control-panel">
+                
+                <div id="view-controls" class="content-view active">
+                    
+                    <div class="ui-group">
+                        <button id="pwrBtn" class="action-btn" onclick="togglePower()">
+                            <span>⚡</span> <span id="pwrText">ACTIVATE SYSTEM</span>
+                        </button>
+                    </div>
+
+                    <div class="ui-group">
+                        <div class="ui-label"><span>Input Power</span> <span id="lblPwr" style="color:white">-10 dBm</span></div>
+                        <input type="range" id="sliderPwr" min="-30" max="0" value="-10" step="1" oninput="updateSys()">
+                    </div>
+
+                    <div class="ui-group">
+                        <div class="ui-label">FIBER MODE CONFIGURATION</div>
+                        <div class="mode-toggles">
+                            <button class="mt-btn active" onclick="setMode(0, this)">SINGLE MODE</button>
+                            <button class="mt-btn" onclick="setMode(1, this)">STEP INDEX</button>
+                            <button class="mt-btn" onclick="setMode(2, this)">GRADED INDEX</button>
+                        </div>
+                    </div>
+
+                    <div class="ui-group" style="margin-top: auto;">
+                        <div class="ui-label">NA CALCULATOR</div>
+                        <div style="display:flex; gap:10px; margin-bottom:10px;">
+                            <input type="number" id="n1" placeholder="n1 (1.48)" style="width:100%; padding:8px; background:rgba(255,255,255,0.05); border:1px solid #333; color:white; border-radius:6px;">
+                            <input type="number" id="n2" placeholder="n2 (1.46)" style="width:100%; padding:8px; background:rgba(255,255,255,0.05); border:1px solid #333; color:white; border-radius:6px;">
+                        </div>
+                        <button onclick="calcNA()" style="width:100%; padding:8px; background:rgba(255,255,255,0.1); border:none; color:white; border-radius:6px; cursor:pointer;">Calculate</button>
+                        <div style="text-align:center; margin-top:5px; color:var(--neon-cyan); font-weight:bold;" id="naOutput">--</div>
+                    </div>
+
+                </div>
+
+                <div id="view-data" class="content-view">
+                    <button class="action-btn active" style="margin-bottom:10px; background: var(--neon-cyan); color:black;" onclick="logRead()">LOG CURRENT READING</button>
+                    <div class="table-container">
+                        <table id="dataTable">
+                            <thead><tr><th>ID</th><th>MODE</th><th>IN</th><th>OUT</th></tr></thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                    <button onclick="resetData()" style="margin-top:10px; width:100%; padding:10px; background:transparent; border:1px solid #444; color:#666; border-radius:8px; cursor:pointer;">CLEAR TABLE</button>
+                </div>
+
+                <div id="view-theory" class="content-view">
+                    <div class="theory-scroll">
+                        <div class="concept-card">
+                            <div class="concept-title">Single Mode (SMF)</div>
+                            <div class="concept-body">
+                                <strong>Core: ~9µm.</strong> Supports only the fundamental axial mode. Light travels straight down the center. Zero intermodal dispersion. Used for long-distance/undersea cables.
+                            </div>
+                        </div>
+                        <div class="concept-card">
+                            <div class="concept-title">Step Index (MMF)</div>
+                            <div class="concept-body">
+                                <strong>Core: ~50-100µm.</strong> Uniform refractive index. Light reflects sharply via Total Internal Reflection (TIR). High dispersion creates signal pulse spreading.
+                            </div>
+                        </div>
+                        <div class="concept-card">
+                            <div class="concept-title">Graded Index (GRIN)</div>
+                            <div class="concept-body">
+                                <strong>Core: ~50-62.5µm.</strong> Refractive index decreases parabolically from center. Light travels in sinusoidal waves. Reduces dispersion compared to Step Index.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="view-team" class="content-view">
+                    <h3 style="margin:0 0 15px 0; font-size:14px; color:#888; text-transform:uppercase;">Developers</h3>
+                    <div class="team-list">
+                        
+                        <div class="member-card me" onclick="window.open('https://www.instagram.com/urtype.raj?igsh=MTR6N2RibDJ6ank0cA==', '_blank')">
+                            <div>
+                                <div class="my-name">Raj Dalvi</div>
+                                <div style="font-size:11px; color:var(--neon-blue); margin-top:2px;">12514</div>
+                            </div>
+                            <div class="member-role" style="background:var(--neon-blue); color:white; border:none;">DEV</div>
+                        </div>
+
+                        <div class="member-card">
+                            <div><div class="member-name">Mahaveer Vishnoi</div><div style="font-size:11px; color:#666">12501</div></div>
+                            <div class="member-role">DEV</div>
+                        </div>
+                        <div class="member-card">
+                            <div><div class="member-name">Vihit Borse</div><div style="font-size:11px; color:#666">12511</div></div>
+                            <div class="member-role">DEV</div>
+                        </div>
+                        <div class="member-card">
+                            <div><div class="member-name">Soham Deshpande</div><div style="font-size:11px; color:#666">12517</div></div>
+                            <div class="member-role">DEV</div>
+                        </div>
+                        <div class="member-card">
+                            <div><div class="member-name">Aryan Chavhan</div><div style="font-size:11px; color:#666">12512</div></div>
+                            <div class="member-role">DEV</div>
+                        </div>
+
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+<script>
+    // --- 1. HOMEPAGE INTERACTIONS ---
+    const homeCard = document.getElementById('tiltCard');
+    const homeLayer = document.getElementById('home-layer');
+    const labLayer = document.getElementById('spatial-world');
+
+    // Parallax Tilt for Homepage
+    document.addEventListener('mousemove', (e) => {
+        // Only tilt if homepage is visible
+        if(window.getComputedStyle(homeLayer).opacity === '0') return;
+
+        const x = (window.innerWidth / 2 - e.pageX) / 25;
+        const y = (window.innerHeight / 2 - e.pageY) / 25;
+        homeCard.style.transform = `rotateY(${x}deg) rotateX(${y}deg)`;
+    });
+
+    // Enter Lab Transition
+    function enterLab() {
+        // 1. Hide Homepage
+        homeLayer.classList.add('hidden');
+        
+        // 2. Reveal Lab after slight delay
+        setTimeout(() => {
+            labLayer.classList.add('visible');
+            // Trigger Resize to ensure canvas renders correctly
+            resize();
+            drawStatic(); 
+        }, 600);
+    }
+
+    // --- 2. LAB 3D PARALLAX ENGINE ---
+    document.addEventListener('mousemove', (e) => {
+        // Only tilt lab if visible
+        if(window.getComputedStyle(labLayer).opacity === '0') return;
+
+        const x = (window.innerWidth / 2 - e.pageX) / 100; // More subtle for lab
+        const y = (window.innerHeight / 2 - e.pageY) / 100;
+        labLayer.style.transform = `rotateY(${x}deg) rotateX(${y}deg)`;
+    });
+
+    // --- 3. BACKGROUND PARTICLES ---
+    const bCanvas = document.getElementById('bgCanvas');
+    const bCtx = bCanvas.getContext('2d');
+    let particles = [];
+
+    function initParticles() {
+        bCanvas.width = window.innerWidth;
+        bCanvas.height = window.innerHeight;
+        particles = Array.from({length: 60}, () => ({
+            x: Math.random() * bCanvas.width,
+            y: Math.random() * bCanvas.height,
+            size: Math.random() * 2,
+            vx: (Math.random() - 0.5) * 0.5,
+            vy: (Math.random() - 0.5) * 0.5
+        }));
+    }
+
+    function animateParticles() {
+        bCtx.clearRect(0, 0, bCanvas.width, bCanvas.height);
+        bCtx.fillStyle = 'rgba(0, 122, 255, 0.4)';
+        
+        particles.forEach(p => {
+            p.x += p.vx; p.y += p.vy;
+            if(p.x < 0) p.x = bCanvas.width; if(p.x > bCanvas.width) p.x = 0;
+            if(p.y < 0) p.y = bCanvas.height; if(p.y > bCanvas.height) p.y = 0;
+            bCtx.beginPath(); bCtx.arc(p.x, p.y, p.size, 0, Math.PI * 2); bCtx.fill();
+        });
+        requestAnimationFrame(animateParticles);
+    }
+    
+    window.addEventListener('resize', initParticles);
+    initParticles(); animateParticles();
+
+
+    // --- 4. APP LOGIC (EXISTING LAB CODE) ---
+    const state = { on: false, mode: 0, input: -10, output: 0, time: 0, signal: new Array(150).fill(-10) };
+    const cvs = document.getElementById('fiberCanvas'); const ctx = cvs.getContext('2d');
+    const scp = document.getElementById('scopeCanvas'); const sCtx = scp.getContext('2d');
+
+    function resize() {
+        if(cvs.parentElement) {
+            cvs.width = cvs.parentElement.offsetWidth; cvs.height = cvs.parentElement.offsetHeight;
+            scp.width = scp.parentElement.offsetWidth; scp.height = scp.parentElement.offsetHeight;
+        }
+    }
+    window.addEventListener('resize', resize);
+
+    // --- CONTROLS ---
+    function switchView(id) {
+        document.querySelectorAll('.pill').forEach(b => b.classList.remove('active'));
+        event.target.classList.add('active');
+        document.querySelectorAll('.content-view').forEach(v => v.classList.remove('active'));
+        document.getElementById('view-'+id).classList.add('active');
+    }
+
+    function togglePower() {
+        state.on = !state.on;
+        const btn = document.getElementById('pwrBtn');
+        if(state.on) {
+            btn.classList.add('active');
+            document.getElementById('pwrText').innerText = "SYSTEM ACTIVE";
+            loop();
+        } else {
+            btn.classList.remove('active');
+            document.getElementById('pwrText').innerText = "ACTIVATE SYSTEM";
+            drawStatic();
+        }
+        updateSys();
+    }
+
+    function setMode(idx, el) {
+        state.mode = idx;
+        document.querySelectorAll('.mt-btn').forEach(b => b.classList.remove('active'));
+        el.classList.add('active');
+        updateSys();
+    }
+
+    function updateSys() {
+        state.input = parseInt(document.getElementById('sliderPwr').value);
+        document.getElementById('lblPwr').innerText = state.input + " dBm";
+        
+        // Physics Calculation
+        const lossBase = [0.2, 2.8, 1.1]; // Single, Step, Graded
+        const noise = (Math.random() * 0.1).toFixed(2);
+        const loss = (lossBase[state.mode] + parseFloat(noise)).toFixed(2);
+        state.output = (state.input - loss).toFixed(2);
+
+        // Update HUD
+        if(state.on) {
+            document.getElementById('valIn').innerText = state.input;
+            document.getElementById('valOut').innerText = state.output;
+        } else {
+            document.getElementById('valIn').innerText = "--";
+            document.getElementById('valOut').innerText = "--";
+        }
+    }
+
+    // --- RENDERING LOOP ---
+    function loop() {
+        if(!state.on) return;
+        state.time += 0.05;
+        
+        // Push Scope Data
+        state.signal.push(parseFloat(state.output));
+        if(state.signal.length > 150) state.signal.shift();
+
+        // 1. Draw Fiber
+        const w = cvs.width; const h = cvs.height; const cy = h/2;
+        ctx.clearRect(0,0,w,h);
+        
+        // Cylindrical 3D Effect using Gradient
+        const thick = 100;
+        let grad = ctx.createLinearGradient(0, cy-thick/2, 0, cy+thick/2);
+        grad.addColorStop(0, "rgba(255,255,255,0.1)"); // Edge highlight
+        grad.addColorStop(0.2, "rgba(255,255,255,0.02)");
+        grad.addColorStop(0.5, state.mode===0 ? "rgba(255,255,255,0.1)" : "rgba(255,255,255,0.05)"); // Core center
+        grad.addColorStop(0.8, "rgba(255,255,255,0.02)");
+        grad.addColorStop(1, "rgba(255,255,255,0.1)");
+        
+        ctx.fillStyle = grad; ctx.fillRect(0, cy-thick/2, w, thick);
+        
+        // Cladding Lines
+        ctx.strokeStyle = "rgba(255,255,255,0.2)"; ctx.beginPath();
+        ctx.moveTo(0, cy-thick/2); ctx.lineTo(w, cy-thick/2);
+        ctx.moveTo(0, cy+thick/2); ctx.lineTo(w, cy+thick/2); ctx.stroke();
+
+        // Laser Beam (Volumetric)
+        ctx.shadowBlur = 20; ctx.shadowColor = "#007AFF"; ctx.strokeStyle = "#007AFF"; ctx.lineWidth = 3;
+        ctx.lineJoin = "round"; ctx.beginPath();
+        
+        for(let x=0; x<w; x+=5) {
+            let y = cy;
+            if(state.mode === 1) { // ZigZag
+                const freq = 0.02;
+                const tri = Math.abs(((x + state.time*100) * freq % 2) - 1);
+                y = cy + (tri * 60) - 30;
+            } else if(state.mode === 2) { // Sine
+                y = cy + Math.sin((x + state.time*100) * 0.03) * 25;
+            }
+            if(x===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+        }
+        ctx.stroke(); ctx.shadowBlur = 0;
+
+        // 2. Draw Scope
+        const sw = scp.width; const sh = scp.height;
+        sCtx.clearRect(0,0,sw,sh);
+        
+        // Grid
+        sCtx.strokeStyle = "rgba(0, 255, 0, 0.1)"; sCtx.lineWidth = 1; sCtx.beginPath();
+        for(let i=0; i<sw; i+=20) { sCtx.moveTo(i,0); sCtx.lineTo(i,sh); } sCtx.stroke();
+        
+        // Signal Line
+        sCtx.strokeStyle = "#34C759"; sCtx.lineWidth = 2; sCtx.beginPath();
+        const step = sw/150;
+        state.signal.forEach((val, i) => {
+            // Map -30 to 0 onto height
+            const y = sh - ((val + 30) / 30) * sh;
+            if(i===0) sCtx.moveTo(0,y); else sCtx.lineTo(i*step, y);
+        });
+        sCtx.stroke();
+
+        requestAnimationFrame(loop);
+    }
+
+    function drawStatic() {
+        ctx.clearRect(0,0,cvs.width,cvs.height);
+        sCtx.clearRect(0,0,scp.width,scp.height);
+        // Draw idle fiber
+        const cy = cvs.height/2;
+        ctx.fillStyle = "rgba(255,255,255,0.05)"; ctx.fillRect(0, cy-50, cvs.width, 100);
+    }
+
+    // --- UTILS ---
+    let logId = 0;
+    function logRead() {
+        if(!state.on) return;
+        logId++;
+        const tbody = document.querySelector('#dataTable tbody');
+        const modes = ["SMF", "STEP", "GRIN"];
+        const row = `<tr><td>${logId}</td><td>${modes[state.mode]}</td><td>${state.input}</td><td>${state.output}</td></tr>`;
+        tbody.innerHTML = row + tbody.innerHTML;
+    }
+    function resetData() { document.querySelector('#dataTable tbody').innerHTML = ""; logId = 0; }
+    
+    function calcNA() {
+        const n1 = parseFloat(document.getElementById('n1').value);
+        const n2 = parseFloat(document.getElementById('n2').value);
+        if(n1 && n2 && n1>n2) document.getElementById('naOutput').innerText = Math.sqrt(n1*n1 - n2*n2).toFixed(3);
+        else document.getElementById('naOutput').innerText = "Error";
+    }
+
+    // Initial Draw (hidden but ready)
+    setTimeout(() => { resize(); drawStatic(); }, 100);
+
+</script>
+</body>
+</html>
